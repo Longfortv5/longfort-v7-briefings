@@ -67,19 +67,28 @@ func GetAssetSessionState(asset string, t time.Time) SessionState {
 	return StateClosed
 }
 
-// ── NY session window (UTC) ───────────────────────────────────────────────────
-// 09:30–16:00 ET = 13:30–20:00 UTC (EDT/summer).
-// Winter (EST): shift both by +1h → 14:30–21:00 UTC. Handle at call site if needed.
+// ── NY session window ─────────────────────────────────────────────────────────
+// Checks 09:30–16:00 ET in the America/New_York timezone so EDT/EST transitions
+// are handled automatically by the IANA database — no manual UTC offset needed.
+
+var nyLoc = func() *time.Location {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		panic("time: failed to load America/New_York: " + err.Error())
+	}
+	return loc
+}()
+
 const (
-	nyOpenUTCMinutes  = 13*60 + 30 // 13:30 UTC
-	nyCloseUTCMinutes = 20 * 60    // 20:00 UTC
+	nyOpenETMinutes  = 9*60 + 30 // 09:30 ET
+	nyCloseETMinutes = 16 * 60   // 16:00 ET
 )
 
 func isNYOpen(t time.Time) bool {
-	utc := t.UTC()
-	h, m, _ := utc.Clock()
+	et := t.In(nyLoc)
+	h, m, _ := et.Clock()
 	total := h*60 + m
-	return total >= nyOpenUTCMinutes && total < nyCloseUTCMinutes
+	return total >= nyOpenETMinutes && total < nyCloseETMinutes
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
