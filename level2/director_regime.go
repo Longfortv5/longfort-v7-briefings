@@ -43,6 +43,7 @@ const (
 type LLMDirector struct {
 	db           *sql.DB
 	vllmEndpoint string
+	modelName    string // vLLM model name, e.g. "Qwen/Qwen2.5-72B-Instruct"
 	httpClient   *http.Client
 
 	mu           sync.RWMutex
@@ -50,12 +51,14 @@ type LLMDirector struct {
 	ManualForced bool
 }
 
-// NewLLMDirector constructs a director with a sensible HTTP timeout.
-func NewLLMDirector(db *sql.DB, vllmEndpoint string) *LLMDirector {
+// NewLLMDirector constructs a director targeting the given vLLM model.
+// modelName must match the model identifier vLLM was started with.
+func NewLLMDirector(db *sql.DB, vllmEndpoint, modelName string) *LLMDirector {
 	return &LLMDirector{
 		db:           db,
 		vllmEndpoint: vllmEndpoint,
-		httpClient:   &http.Client{Timeout: 10 * time.Second},
+		modelName:    modelName,
+		httpClient:   &http.Client{Timeout: 15 * time.Second},
 		CurrentState: RegimePinned,
 	}
 }
@@ -263,7 +266,7 @@ type chatResponse struct {
 
 func (d *LLMDirector) callVLLM(ctx context.Context, userPrompt string) (MarketRegime, error) {
 	reqBody := chatRequest{
-		Model: "local",
+		Model: d.modelName,
 		Messages: []chatMessage{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},

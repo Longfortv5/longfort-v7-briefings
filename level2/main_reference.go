@@ -14,20 +14,19 @@ import (
 
 // ── Session state (mirrors director.GetAssetSessionState) ────────────────────
 
+// IsGlobalSystemAvailable returns true within the CME trading week:
+// Sunday 21:00 UTC (Globex open) through Friday 21:00 UTC (Globex close).
 func IsGlobalSystemAvailable(t time.Time) bool {
 	utc := t.UTC()
 	weekday := utc.Weekday()
 	hr, _, _ := utc.Clock()
-	if weekday == time.Friday && hr >= 20 {
+	if weekday == time.Friday && hr >= 21 {
 		return false
 	}
 	if weekday == time.Saturday {
 		return false
 	}
-	if weekday == time.Sunday && hr < 22 {
-		return false
-	}
-	if hr == 21 {
+	if weekday == time.Sunday && hr < 21 {
 		return false
 	}
 	return true
@@ -109,23 +108,23 @@ func JackMain() {
 		// TODO: questdb.LogTripEvent(e)
 	})
 
-	// Director — wire real *sql.DB and vLLM endpoint from env/config
-	// db := mustOpenQuestDB(os.Getenv("QUESTDB_DSN"))
-	// directorEngine := NewLLMDirector(db, os.Getenv("VLLM_ENDPOINT"))
-	// Below uses nil DB as placeholder — swap before live arming
-	directorEngine := NewLLMDirector(nil, "http://gb10.local:8000")
+	// Director — Qwen on local vLLM, no API cost.
+	// Swap nil for real *sql.DB before live arming.
+	// db, _ := sql.Open("pgx", "host=gb10.local port=8812 user=admin password=quest dbname=qdb")
+	directorEngine := NewLLMDirector(nil, "http://gb10.local:8000", "Qwen/Qwen2.5-72B-Instruct")
 
-	// 5-minute regime update goroutine
-	regimeTicker := time.NewTicker(5 * time.Minute)
+	// 1-minute Qwen regime loop, gated by session window
+	regimeTicker := time.NewTicker(1 * time.Minute)
 	defer regimeTicker.Stop()
 	go func() {
 		for {
 			select {
-			case <-regimeTicker.C:
+			case t := <-regimeTicker.C:
+				if !IsGlobalSystemAvailable(t) {
+					continue // outside Sunday 21:00–Friday 21:00 UTC window
+				}
 				if err := directorEngine.EvaluateRegime(ctx); err != nil {
-					slog.Error("regime evaluation failed", "err", err)
-					// Do not trip the breaker on evaluation error — stale regime
-					// is safer than a spurious halt. Log and continue.
+					slog.Error("qwen regime evaluation failed", "err", err)
 				}
 			case <-ctx.Done():
 				return
