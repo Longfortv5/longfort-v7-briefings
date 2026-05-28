@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package rithmic;
+option go_package = "github.com/Longfortv5/longfort-v7-briefings/level2/proto/rithmic";
+
+service RithmicSidecar {
+  rpc SubscribeDepth(DepthRequest) returns (stream DepthUpdate);
+}
+
+message DepthRequest {
+  string symbol = 1;
+}
+
+message PriceLevel {
+  double price = 1;
+  int32  size  = 2;
+}
+
+message DepthUpdate {
+  int64                exchange_ts_ns = 1;
+  repeated PriceLevel bids           = 2;
+  repeated PriceLevel asks           = 3;
+}
