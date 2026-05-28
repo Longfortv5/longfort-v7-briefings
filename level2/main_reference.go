@@ -68,10 +68,11 @@ func GetAssetSessionState(asset string, t time.Time) SessionState {
 }
 
 // ── NY session window (UTC) ───────────────────────────────────────────────────
-// 09:30–16:00 ET = 14:30–21:00 UTC (winter). Add DST offset if needed.
+// 09:30–16:00 ET = 13:30–20:00 UTC (EDT/summer).
+// Winter (EST): shift both by +1h → 14:30–21:00 UTC. Handle at call site if needed.
 const (
-	nyOpenUTCMinutes  = 14*60 + 30 // 14:30 UTC
-	nyCloseUTCMinutes = 21 * 60    // 21:00 UTC
+	nyOpenUTCMinutes  = 13*60 + 30 // 13:30 UTC
+	nyCloseUTCMinutes = 20 * 60    // 20:00 UTC
 )
 
 func isNYOpen(t time.Time) bool {
