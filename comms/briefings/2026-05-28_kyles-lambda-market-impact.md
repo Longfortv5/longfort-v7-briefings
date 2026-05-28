@@ -87,8 +87,8 @@ Markets are rarely symmetrical. Comparing `λ_ask` to `λ_bid` reveals the path 
 
 | Λ_ratio | Interpretation |
 |---|---|
-| `> 1` | Ask side is **thinner** than bid. Upward movement faces structural friction; **downward move is barricaded** by resting bids. Path of least resistance: **UP**. |
-| `< 1` | Bid side is **thinner** than ask. Downward movement faces structural friction; **upward move is barricaded** by resting offers. Path of least resistance: **DOWN**. |
+| `> 1` | Ask side is **thinner** than bid. Downward movement faces structural friction from thick bids; **upward move sweeps through thin asks**. Path of least resistance: **UP**. |
+| `< 1` | Bid side is **thinner** than ask. Upward movement faces structural friction from thick offers; **downward move sweeps through thin bids**. Path of least resistance: **DOWN**. |
 | `≈ 1` | Book is structurally balanced. No directional edge from lambda alone. |
 
 ---
