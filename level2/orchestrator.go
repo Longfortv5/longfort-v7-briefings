@@ -93,7 +93,7 @@ func LoadCfgFromEnv() OrchestratorCfg {
 		Databento: DatabentoCfg{
 			APIKey:  os.Getenv("DATABENTO_API_KEY"),
 			Dataset: envOr("DATABENTO_DATASET", "GLBX.MDP3"),
-			Schema:  "mbp-10",
+			Schema:  "mbp-1",
 		},
 	}
 }
@@ -157,37 +157,57 @@ func RunOrchestrator(parentCtx context.Context, cfg OrchestratorCfg) error {
 		slog.Info("IG spot pollers started", "epics", cfg.IGEpics)
 	}
 
-	// ── Rithmic L2 stream ─────────────────────────────────────────────────────
-	// Needs gRPC bridge sidecar running on GB10.
-	// Once the bridge is running:
-	//   rithmicProvider := NewRithmicProvider(cfg.Rithmic)
-	//   go runL2Ingest(ctx, rithmicProvider, "NQ", 10, qdb, breaker)
-	slog.Warn("rithmic L2 stream: STUB — wire gRPC bridge to activate")
+	// ── Rithmic MBP-10 stream — Kyle's Lambda source (10 price levels) ──────────
+	// Subscribe() blocks on ctx.Done() until the gRPC bridge sidecar is running.
+	// No code change needed when the bridge goes live — ticks flow automatically.
+	rithmicGEX := faPoller.Poll(ctx, "NQ", 60*time.Second)
+	rithmicProvider := NewRithmicProvider(cfg.Rithmic)
+	go func() {
+		snapCh, err := rithmicProvider.Subscribe(ctx, "NQ", 10)
+		if err != nil {
+			slog.Error("rithmic subscribe failed", "err", err)
+			return
+		}
+		sigCh := RunTickLambdaPipeline(ctx, snapCh, rithmicGEX, qdb, 10, 100, DefaultConfig())
+		for ts := range sigCh {
+			if ts.Signal.Armed {
+				slog.Info("L2 signal armed",
+					"symbol", ts.Tick.Symbol,
+					"mid", ts.Tick.Mid(),
+					"spread", ts.Tick.Spread(),
+					"imbalance", ts.Imbalance,
+					"lambda_ask", ts.Lambda.Ask,
+					"lambda_ratio", ts.Lambda.Ratio,
+				)
+			}
+			_ = breaker.AssertSafeToTrade()
+		}
+	}()
+	slog.Info("rithmic MBP-10 pipeline armed — ticks flow when gRPC bridge connects", "symbol", "NQ", "depth", 10)
 
-	// ── Databento MBP-10 stream — full Kyle's Lambda (10 price levels) ──────────
+	// ── Databento MBP-1 stream — L1 OFI reference feed (lambda=0 at k=1) ────────
+	// QuestDB snapshots are written by Rithmic above; nil writer here avoids duplicates.
 	if cfg.Databento.APIKey != "" {
-		gexFeedForNQ := faPoller.Poll(ctx, "NQ", 60*time.Second)
 		databentoProvider := NewDatabentoProvider(cfg.Databento)
 		go func() {
-			snapCh, err := databentoProvider.Subscribe(ctx, "NQ.c.0", 10)
+			snapCh, err := databentoProvider.Subscribe(ctx, "NQ.c.0", 1)
 			if err != nil {
 				slog.Error("databento subscribe failed", "err", err)
 				return
 			}
-			sigCh := RunTickLambdaPipeline(ctx, snapCh, gexFeedForNQ, qdb, 10, 10, DefaultConfig())
+			sigCh := RunTickLambdaPipeline(ctx, snapCh, nil, nil, 1, 10, DefaultConfig())
 			for ts := range sigCh {
 				if ts.Signal.Armed {
-					slog.Info("L1 signal armed",
+					slog.Info("L1 OFI signal armed",
 						"symbol", ts.Tick.Symbol,
 						"mid", ts.Tick.Mid(),
-						"spread", ts.Tick.Spread(),
 						"imbalance", ts.Imbalance,
 					)
 				}
-				_ = breaker.AssertSafeToTrade() // checked at intake cycle level
+				_ = breaker.AssertSafeToTrade()
 			}
 		}()
-		slog.Info("databento MBP-10 stream started", "symbol", "NQ.c.0", "depth", 10)
+		slog.Info("databento MBP-1 stream started", "symbol", "NQ.c.0")
 	} else {
 		slog.Warn("databento stream: DATABENTO_API_KEY not set — skipped")
 	}
