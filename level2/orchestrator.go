@@ -160,7 +160,7 @@ func RunOrchestrator(parentCtx context.Context, cfg OrchestratorCfg) error {
 	// ── Rithmic MBP-10 stream — Kyle's Lambda source (10 price levels) ──────────
 	// Subscribe() blocks on ctx.Done() until the gRPC bridge sidecar is running.
 	// No code change needed when the bridge goes live — ticks flow automatically.
-	rithmicGEX := faPoller.Poll(ctx, "NQ", 60*time.Second)
+	flashAlphaGEX := faPoller.Poll(ctx, "NQ", 60*time.Second)
 	rithmicProvider := NewRithmicProvider(cfg.Rithmic)
 	go func() {
 		snapCh, err := rithmicProvider.Subscribe(ctx, "NQ", 10)
@@ -168,7 +168,7 @@ func RunOrchestrator(parentCtx context.Context, cfg OrchestratorCfg) error {
 			slog.Error("rithmic subscribe failed", "err", err)
 			return
 		}
-		sigCh := RunTickLambdaPipeline(ctx, snapCh, rithmicGEX, qdb, 10, 100, DefaultConfig())
+		sigCh := RunTickLambdaPipeline(ctx, snapCh, flashAlphaGEX, qdb, 10, 100, DefaultConfig())
 		for ts := range sigCh {
 			if ts.Signal.Armed {
 				slog.Info("L2 signal armed",
