@@ -164,19 +164,17 @@ func RunOrchestrator(parentCtx context.Context, cfg OrchestratorCfg) error {
 	//   go runL2Ingest(ctx, rithmicProvider, "NQ", 10, qdb, breaker)
 	slog.Warn("rithmic L2 stream: STUB — wire gRPC bridge to activate")
 
-	// ── Databento MBP-1 stream (live — stdlib TLS TCP, no external SDK) ───────
-	// Schema is "mbp-1" (Level 1). Lambda values will be 0 at k=1.
-	// Switch DatabentoCfg.Schema to "mbp-10" for full Kyle's Lambda.
+	// ── Databento MBP-10 stream — full Kyle's Lambda (10 price levels) ──────────
 	if cfg.Databento.APIKey != "" {
 		gexFeedForNQ := faPoller.Poll(ctx, "NQ", 60*time.Second)
 		databentoProvider := NewDatabentoProvider(cfg.Databento)
 		go func() {
-			snapCh, err := databentoProvider.Subscribe(ctx, "NQ.c.0", 1)
+			snapCh, err := databentoProvider.Subscribe(ctx, "NQ.c.0", 10)
 			if err != nil {
 				slog.Error("databento subscribe failed", "err", err)
 				return
 			}
-			sigCh := RunTickLambdaPipeline(ctx, snapCh, gexFeedForNQ, qdb, 1, 10, DefaultConfig())
+			sigCh := RunTickLambdaPipeline(ctx, snapCh, gexFeedForNQ, qdb, 10, 10, DefaultConfig())
 			for ts := range sigCh {
 				if ts.Signal.Armed {
 					slog.Info("L1 signal armed",
@@ -189,7 +187,7 @@ func RunOrchestrator(parentCtx context.Context, cfg OrchestratorCfg) error {
 				_ = breaker.AssertSafeToTrade() // checked at intake cycle level
 			}
 		}()
-		slog.Info("databento MBP-1 stream started", "symbol", "NQ.c.0")
+		slog.Info("databento MBP-10 stream started", "symbol", "NQ.c.0", "depth", 10)
 	} else {
 		slog.Warn("databento stream: DATABENTO_API_KEY not set — skipped")
 	}

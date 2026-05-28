@@ -5,11 +5,15 @@ package level2
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	_ "github.com/lib/pq"
 )
 
 // ── Session state (mirrors director.GetAssetSessionState) ────────────────────
@@ -108,10 +112,17 @@ func JackMain() {
 		// TODO: questdb.LogTripEvent(e)
 	})
 
-	// Director — Qwen on local vLLM, no API cost.
-	// Swap nil for real *sql.DB before live arming.
-	// db, _ := sql.Open("pgx", "host=gb10.local port=8812 user=admin password=quest dbname=qdb")
-	directorEngine := NewLLMDirector(nil, "http://gb10.local:8000", "Qwen/Qwen2.5-72B-Instruct")
+	// Director — Qwen3 on local vLLM, no API cost.
+	pgHost := envOr("QUESTDB_PG_ADDR", "gb10.local")
+	pgDSN := fmt.Sprintf("host=%s port=8812 user=admin password=quest dbname=qdb sslmode=disable", pgHost)
+	db, err := sql.Open("postgres", pgDSN)
+	if err != nil {
+		slog.Error("questdb pg open failed", "err", err)
+		return
+	}
+	defer db.Close()
+	vllmEndpoint := envOr("VLLM_ENDPOINT", "http://gb10.local:8000")
+	directorEngine := NewLLMDirector(db, vllmEndpoint, "Qwen/Qwen3-Coder-30B-A3B-Instruct")
 
 	// 1-minute Qwen regime loop, gated by session window
 	regimeTicker := time.NewTicker(1 * time.Minute)
